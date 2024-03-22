@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Evolution Simulator</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; }
+        canvas { display: block; background: #ddf; border: 1px solid #000; }
+    </style>
+</head>
+<body>
+<canvas id="world"></canvas>
+<script>
+    const canvas = document.getElementById('world');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const ctx = canvas.getContext('2d');
+
+    let creatures = [];
+    let foods = [];
+
+    class Creature {
+        constructor(x, y, size, speed, isBaby = false) {
+            this.x = x;
+            this.y = y;
+            this.size = isBaby ? 5 : size;
+            this.speed = speed;
+            this.energy = 50;
+            this.foodsEaten = 0;
+            this.growthRate = 0.9; // Smaller growth rate for gradual increase
+            this.isAdult = !isBaby;
+            this.color = this.getColorBasedOnSpeed(speed); // Color based on speed
+        }
+
+        getColorBasedOnSpeed(speed) {
+            const speedRatio = Math.min(1, speed / 2); // Assuming max initial speed is around 2
+            const r = Math.floor(255 * speedRatio);
+            const g = Math.floor(255 * (1 - speedRatio));
+            const b = 100;
+            return `rgb(${r},${g},${b})`;
+        }
+
+        move() {
+            let nearestFood = foods.reduce((nearest, food) => {
+                let distToFood = Math.sqrt(Math.pow(food.x - this.x, 2) + Math.pow(food.y - this.y, 2));
+                let distToNearest = nearest ? Math.sqrt(Math.pow(nearest.x - this.x, 2) + Math.pow(nearest.y - this.y, 2)) : Infinity;
+                return distToFood < distToNearest ? food : nearest;
+            }, null);
+
+            if (nearestFood) {
+                let angleToFood = Math.atan2(nearestFood.y - this.y, nearestFood.x - this.x);
+                this.x += Math.cos(angleToFood) * this.speed;
+                this.y += Math.sin(angleToFood) * this.speed;
+                this.energy -= 0.01; // Reduced energy consumption for movement
+            }
+        }
+
+        eat() {
+            foods = foods.filter(food => {
+                const distance = Math.sqrt((food.x - this.x) ** 2 + (food.y - this.y) ** 2);
+                if (distance < this.size) {
+                    this.energy += 15;
+                    this.foodsEaten += 1;
+                    if (this.foodsEaten >= 2 && this.energy > 60) {
+                        this.reproduce();
+                        this.foodsEaten = 0;
+                    }
+                    return false; // Food is eaten
+                }
+                return true; // Food remains
+            });
+        }
+        reproduce() {
+            const sizeVariation = (Math.random() - 0.5) * .5; // Enhanced mutation rate
+            const speedVariation = (Math.random() - 0.5) * .5;
+            creatures.push(new Creature(this.x, this.y, Math.max(5, this.size + sizeVariation), Math.max(0.1, this.speed + speedVariation), true));
+            this.energy -= 20; // Adjusted energy cost for reproduction
+        }
+
+        draw() {
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+    }
+
+    class Food {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        draw() {
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, 5, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+    }
+
+    function spawnFood() {
+        if (foods.length < 40) { // Keeping the food count up without overcrowding
+            for (let i = 0; i < 5; i++) { // Spawn multiple foods at once for a better supply
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                foods.push(new Food(x, y));
+            }
+        }
+    }
+
+    function gameLoop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        spawnFood();
+        foods.forEach(food => food.draw());
+        creatures.forEach(creature => {
+            creature.move();
+            creature.eat();
+            creature.draw();
+        });
+        creatures = creatures.filter(creature => creature.energy > 0);
+        requestAnimationFrame(gameLoop);
+    }
+
+    function init() {
+        for (let i = 0; i < 25; i++) { // Starting with a larger initial population
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            const size = 10;
+            const speed = Math.random() + 0.5; // Giving a bit of variation to the initial speed
+            creatures.push(new Creature(x, y, size, speed));
+        }
+        spawnFood();
+        requestAnimationFrame(gameLoop);
+    }
+
+    init();
+</script>
+</body>
+</html>
