@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Evolution Simulator</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; }
+        canvas { display: block; background: #ddf; border: 1px solid #000; }
+    </style>
+</head>
+<body>
+<canvas id="world"></canvas>
+<script>
+    const canvas = document.getElementById('world');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const ctx = canvas.getContext('2d');
+
+    let creatures = [];
+    let foods = [];
+
+    class Creature {
+        constructor(x, y, size, speed, isBaby = false) {
+            this.x = x;
+            this.y = y;
+            this.size = isBaby ? 5 : size;
+            this.speed = speed;
+            this.energy = 50;
+            this.foodsEaten = 0;
+            this.growthRate = 0.9; // Smaller growth rate for gradual increase
+            this.isAdult = !isBaby;
+            this.alive = true;
+            this.color = this.getColorBasedOnSpeed(speed); // Color based on speed
+        }
+
+        getColorBasedOnSpeed(speed) {
+            const speedRatio = Math.min(1, speed / 2); // Assuming max initial speed is around 2
+            const r = Math.floor(255 * speedRatio);
+            const g = Math.floor(255 * (1 - speedRatio));
+            const b = 100;
+            return `rgb(${r},${g},${b})`;
+        }
+
+        move() {
+    // Calculate distances and sort foods by proximity
+    const sortedFoods = foods.map(food => {
+        const distToFood = Math.sqrt(Math.pow(food.x - this.x, 2) + Math.pow(food.y - this.y, 2));
+        return { food, distToFood };
+    }).sort((a, b) => a.distToFood - b.distToFood);
+
+    // Get the nearest 3 foods, or fewer if there aren't enough
+    const nearestFoods = sortedFoods.slice(0, 3);
+
+    if (nearestFoods.length > 0) {
+        // Choose one of the nearest 3 foods at random
+        const chosenFoodIndex = Math.floor(Math.random() * nearestFoods.length);
+        const chosenFood = nearestFoods[chosenFoodIndex].food;
+
+        // Move towards the chosen food
+        let angleToFood = Math.atan2(chosenFood.y - this.y, chosenFood.x - this.x);
+        this.x += Math.cos(angleToFood) * this.speed;
+        this.y += Math.sin(angleToFood) * this.speed;
+        this.energy -= 0.01; // Reduced energy consumption for movement
+    }
+}
+
+
+
+        eat() {
+            foods = foods.filter(food => {
+                const distance = Math.sqrt((food.x - this.x) ** 2 + (food.y - this.y) ** 2);
+                if (distance < this.size) {
+                    this.energy += 15;
+                    this.foodsEaten += 1;
+                    if (this.foodsEaten >= 2 && this.energy > 60) {
+                        this.reproduce();
+                        this.foodsEaten = 0;
+                    }
+                    return false; // Food is eaten
+                }
+                return true; // Food remains
+            });
+        }
+        reproduce() {
+            const sizeVariation = (Math.random() - 0.5) * .5; // Enhanced mutation rate
+            const speedVariation = (Math.random() - 0.5) * .5;
+            creatures.push(new Creature(this.x, this.y, Math.max(5, this.size + sizeVariation), Math.max(0.1, this.speed + speedVariation), true));
+            this.energy -= 20; // Adjusted energy cost for reproduction
+        }
+
+        draw() {
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+    }
+    class Predator extends Creature {
+    constructor(x, y, size = 20, speed = 1, energy = 100) {
+        super(x, y, size, speed, energy);
+        this.attackRange = 10; // The range within which a predator can catch prey
+        this.viewRange = 100; // The range within which a predator can detect prey
+    }
+
+    detectNearestPrey(preys) {
+        // Find the nearest prey within viewRange
+        let nearestPrey = null;
+        let minDistance = this.viewRange + 1; // Initialize with a distance slightly larger than viewRange
+
+        preys.forEach(prey => {
+            const dx = prey.x - this.x;
+            const dy = prey.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < minDistance) {
+                nearestPrey = prey;
+                minDistance = distance;
+            }
+        });
+
+        return nearestPrey;
+    }
+
+    move(preys) {
+        let nearestPrey = this.detectNearestPrey(preys);
+        if (nearestPrey && this.energy < 80) { // Predator hunts if energy is below a threshold
+            const dx = nearestPrey.x - this.x;
+            const dy = nearestPrey.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance <= this.attackRange) {
+                this.eat(nearestPrey);
+            } else {
+                // Move towards the prey
+                this.x += (dx / distance) * this.speed;
+                this.y += (dy / distance) * this.speed;
+            }
+        } else {
+            // Wander around if no prey is detected or energy is sufficient
+            this.x += (Math.random() - 0.5) * this.speed;
+            this.y += (Math.random() - 0.5) * this.speed;
+        }
+
+        this.consumeEnergy(0.5); // Energy consumed for moving
+    }
+
+    eat(prey) {
+        if (prey.alive) {
+            // Simulate eating the prey
+            this.energy += 25; // Gain energy from eating prey
+            prey.die(); // The prey is consumed and dies
+        }
+    }
+    draw(ctx) {
+    // Fill color for predator
+    ctx.fillStyle = 'yellow';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+    ctx.fill();
+
+    // Outline color and width
+    ctx.strokeStyle = 'black'; // Set the outline (stroke) color to black
+    ctx.lineWidth = 2; // Set the width of the outline
+    ctx.stroke(); // Apply the outline to the predator
+}
+
+
+}
+class Prey extends Creature {
+    constructor(x, y, size = 10, speed = 1.5, energy = 50) {
+        super(x, y, size, speed, energy);
+    }
+
+    detectNearestPredator(predators) {
+        // Detect the nearest predator
+        let nearestPredator = null;
+        let nearestDistance = Infinity;
+        
+        predators.forEach(predator => {
+            const dx = predator.x - this.x;
+            const dy = predator.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < nearestDistance) {
+                nearestPredator = predator;
+                nearestDistance = distance;
+            }
+        });
+
+        return { predator: nearestPredator, distance: nearestDistance };
+    }
+
+    evade(predator) {
+        // Evasion logic
+        const dx = this.x - predator.x;
+        const dy = this.y - predator.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Move away from the predator faster than normal speed to evade
+        if (distance < 50) { // If the predator is within evasion distance
+            this.x += (dx / distance) * this.speed * 2;
+            this.y += (dy / distance) * this.speed * 2;
+        }
+    }
+
+    move(predators) {
+        // Enhance move method to include predator detection and evasion
+        if (predators.length > 0) {
+            const { predator, distance } = this.detectNearestPredator(predators);
+            if (predator && distance < 50) {
+                this.evade(predator);
+            } else {
+                // Normal movement when no immediate threat is detected
+                this.x += (Math.random() - 0.5) * this.speed;
+                this.y += (Math.random() - 0.5) * this.speed;
+            }
+        } else {
+            // Normal movement when no predators are present
+            this.x += (Math.random() - 0.5) * this.speed;
+            this.y += (Math.random() - 0.5) * this.speed;
+        }
+
+        this.consumeEnergy(0.2); // Energy consumption for moving
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = 'green';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+}
+
+    class Food {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        draw() {
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, 5, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+    }
+
+    function spawnFood() {
+        if (foods.length < 40) { // Keeping the food count up without overcrowding
+            for (let i = 0; i < 5; i++) { // Spawn multiple foods at once for a better supply
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                foods.push(new Food(x, y));
+            }
+        }
+    }
+
+    function gameLoop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        spawnFood();
+        foods.forEach(food => food.draw());
+        creatures.forEach(creature => {
+            creature.move();
+            creature.eat();
+            creature.draw();
+        });
+        creatures = creatures.filter(creature => creature.energy > 0);
+        requestAnimationFrame(gameLoop);
+    }
+
+    function init() {
+        for (let i = 0; i < 25; i++) { // Starting with a larger initial population
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            const size = 10;
+            const speed = Math.random() + 0.5; // Giving a bit of variation to the initial speed
+            creatures.push(new Creature(x, y, size, speed));
+        }
+        spawnFood();
+        requestAnimationFrame(gameLoop);
+    }
+
+    init();
+</script>
+</body>
+</html>
